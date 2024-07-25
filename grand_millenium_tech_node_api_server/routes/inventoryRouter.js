@@ -30,4 +30,6 @@ router.delete(
 
 router.post("/validatePNPD", inventoryController.validatePNPD);
 
+router.post("/bulkAddInv", inventoryController.bulkAddItems)
+
 module.exports = router;

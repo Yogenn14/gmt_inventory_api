@@ -394,10 +394,11 @@ const addUnserializedItem = async (req, res) => {
       partData: partDetails,
     });
   } catch (error) {
-    if (transaction) await transaction.rollback();
+    if (transaction && !transaction.finished) await transaction.rollback();
     return res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 const shipOutItems = async (req, res) => {
   const { id } = req.params;
@@ -830,6 +831,149 @@ const revertSerializedItemOut = async (req, res) => {
   }
 };
 
+const bulkAddItems = async (req, res) => {
+  const { items } = req.body;
+  const transaction = await sequelize.transaction();
+
+  try {
+    for (const item of items) {
+      const {
+        inventoryId,
+        type,
+        quantityChange,
+        date,
+        supplier,
+        manufactureroem,
+        condition,
+        status,
+        userEmail,
+        serialNumber,
+        inDate,
+        outDate,
+        customer,
+        warrantyEndDate,
+      } = item;
+
+      const findInventoryId = await Inventory.findByPk(inventoryId);
+      if (!findInventoryId) {
+        throw new Error(`Cannot find inventoryID: ${inventoryId}`);
+      }
+
+      const partDetails = {
+        partNumber: findInventoryId.partNumber,
+        partDescription: findInventoryId.partDescription,
+      };
+
+      if (type === "unserialized") {
+        if (
+          quantityChange <= 0 ||
+          !supplier ||
+          !manufactureroem ||
+          !condition ||
+          !status ||
+          !date
+        ) {
+          throw new Error("Invalid input parameters for unserialized item");
+        }
+
+        await Inventory.update(
+          { quantity: findInventoryId.quantity + quantityChange },
+          { where: { id: inventoryId }, transaction }
+        );
+
+        await UnserializedIn.create(
+          {
+            inventoryId,
+            quantityChange,
+            totalPurchased: quantityChange,
+            date,
+            supplier,
+            manufactureroem,
+            condition,
+            status,
+            userEmail,
+          },
+          { transaction }
+        );
+      } else if (type === "serialized") {
+        if (
+          serialNumber === null ||
+          serialNumber === "" ||
+          quantityChange !== 1 ||
+          !condition ||
+          !status ||
+          !manufactureroem ||
+          !inDate ||
+          new Date(warrantyEndDate) < new Date(inDate) ||
+          outDate !== null
+        ) {
+          throw new Error("Invalid input parameters for serialized item");
+        }
+
+        const findSerialNumber = await SerializedItem.findOne({
+          where: { serialNumber: serialNumber },
+        });
+
+        if (findSerialNumber) {
+          throw new Error(`Serial Number already exists: ${serialNumber}`);
+        }
+
+        await Inventory.update(
+          {
+            quantity: findInventoryId.quantity + 1,
+            totalStock: findInventoryId.totalStock + 1,
+          },
+          { where: { id: inventoryId }, transaction }
+        );
+
+        await SerializedItem.create(
+          {
+            inventoryId,
+            serialNumber,
+            quantity: 1,
+            condition,
+            status,
+            manufactureroem,
+            inDate,
+            outDate,
+            userEmail,
+            supplier,
+            customer,
+            warrantyEndDate,
+          },
+          { transaction }
+        );
+      }
+
+      // Send notification
+      const emailSubject = `Beta-GMT Inventory Item Added [Part Number: ${
+        partDetails.partNumber !== null ? partDetails.partNumber : "unspecified"
+      }] [Part Description: ${
+        partDetails.partDescription !== null
+          ? partDetails.partDescription
+          : "unspecified"
+      }]`;
+      const emailText = `A new item has been added to the inventory:\n\nPart Description: ${partDetails.partDescription}\nPart Number: ${partDetails.partNumber}\n${
+        type === "serialized" ? `Serial Number: ${serialNumber}\n` : ""
+      }Type: ${type}\nQuantity: ${type === "serialized" ? 1 : quantityChange}\nIn Date: ${
+        type === "serialized" ? inDate : date
+      }\nCreated by: ${userEmail}`;
+      await createNotification("dhia@grandmtech.com", emailSubject, emailText);
+    }
+
+    await transaction.commit();
+
+    return res.status(201).json({
+      message: "Successfully created",
+    });
+  } catch (error) {
+    if (transaction && !transaction.finished) await transaction.rollback();
+    return res.status(500).json({ error: "Internal server error", message: error.message });
+  }
+};
+
+
+
 module.exports = {
   getInventoryPaginated,
   addToInventory,
@@ -841,4 +985,5 @@ module.exports = {
   shipOutItems,
   revertShipment,
   validatePNPD,
+  bulkAddItems
 };
