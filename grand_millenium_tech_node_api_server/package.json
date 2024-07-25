@@ -1,0 +1,37 @@
+{
+  "name": "grand_millenium_tech_node_api_server",
+  "version": "1.0.0",
+  "description": "node js express api",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon server.js"
+  },
+  "keywords": [
+    "node",
+    "js",
+    "express",
+    "mysql"
+  ],
+  "author": "yogenthirran",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "jsdom": "^24.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mime-types": "^2.1.35",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.9.7",
+    "nodemailer": "^6.9.13",
+    "nodemon": "^3.1.0",
+    "path": "^0.12.7",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "^0.15.0",
+    "pdfkit-table": "^0.1.99",
+    "puppeteer": "^22.12.1",
+    "sequelize": "^6.37.3",
+    "uuid": "^9.0.1"
+  }
+}
