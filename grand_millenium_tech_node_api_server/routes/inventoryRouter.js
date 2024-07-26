@@ -1,6 +1,6 @@
 const inventoryController = require("../controllers/inventoryController");
 const router = require("express").Router();
-
+const { validateItems } = require('../controllers/inventoryController')
 //[GET]
 router.get("/getInventory", inventoryController.getInventoryPaginated);
 
@@ -29,6 +29,8 @@ router.delete(
 );
 
 router.post("/validatePNPD", inventoryController.validatePNPD);
+router.post('/validate-items', validateItems);
+
 
 router.post("/bulkAddInv", inventoryController.bulkAddItems)
 

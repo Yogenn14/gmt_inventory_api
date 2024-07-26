@@ -10,6 +10,8 @@ const { off } = require("process");
 const { Op, where } = require("sequelize");
 const { sequelize } = db;
 const createNotification = require("../services/emailServices");
+const { validateSchema } = require("../middleware/validationSchema");
+const { validate } = require("uuid");
 
 const Inventory = db.inventory;
 const InventoryLog = db.inventoryLog;
@@ -831,6 +833,17 @@ const revertSerializedItemOut = async (req, res) => {
   }
 };
 
+const validateItems = (req, res) => {
+  const { error } = validateSchema.validate(req.body);
+  
+  if (error) {
+    return res.status(400).json({ error: error.details.map(detail => detail.message).join(', ') });
+  }
+
+  res.status(200).json({ message: 'Validation successful' });
+};
+
+
 const bulkAddItems = async (req, res) => {
   const { items } = req.body;
   const transaction = await sequelize.transaction();
@@ -985,5 +998,6 @@ module.exports = {
   shipOutItems,
   revertShipment,
   validatePNPD,
-  bulkAddItems
+  bulkAddItems,
+  validateItems
 };
