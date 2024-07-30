@@ -275,6 +275,62 @@ const addToInventory = async (req, res) => {
   }
 };
 
+const addConstraint = async (req, res) => {
+  try {
+    const { partNumber, partDescription, type, userEmail } = req.body;
+
+    if (!partNumber || !partDescription || !type) {
+      return res.status(400).json({
+        error: "partNumber, partDescription, and type are required fields.",
+      });
+    }
+
+    if (type !== "serialized" && type !== "non-serialized") {
+      return res.status(400).json({
+        error: "The type field must be either 'serialized' or 'non-serialized'.",
+      });
+    }
+
+    const existingItem = await Inventory.findOne({
+      where: { partNumber, partDescription },
+    });
+
+    if (existingItem) {
+      return res.status(400).json({
+        error: "An item with the same part number and part description combination already exists in the database.",
+        partNumber: partNumber,
+        partDescription: partDescription,
+        inventoryId: existingItem.id,
+        type: existingItem.type,
+      });
+    }
+
+    const formData = {
+      partNumber,
+      partDescription,
+      type,
+      quantity: null,
+      manufactureroem: null,
+      condition: null,
+      image: null,
+      status: null,
+      inDate: null,
+      outDate: null,
+      userEmail,
+    };
+
+    const inventory = await Inventory.create(formData);
+
+    return res.status(201).json({
+      message: "Item added successfully",
+      inventory,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 const validatePNPD = async (req, res) => {
   const { partNumber, partDescription } = req.body;
 
@@ -302,7 +358,7 @@ const validatePNPD = async (req, res) => {
 
     return res
       .status(200)
-      .json({ message: "Part number and part description does not exist" });
+      .json({ message: "Part number and part description does not exist", exist: "false" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Internal server error" });
@@ -584,7 +640,7 @@ const addSerializedPart = async (req, res) => {
     where: { serialNumber: serialNumber },
   });
 
-  if (findSerialNumber) {
+  if (findSerialNumber) { 
     await transaction.rollback();
     return res.status(400).json({ error: "Serial Number already exist" });
   }
@@ -999,5 +1055,6 @@ module.exports = {
   revertShipment,
   validatePNPD,
   bulkAddItems,
-  validateItems
+  validateItems,
+  addConstraint
 };

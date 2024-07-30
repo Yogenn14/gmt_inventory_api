@@ -349,7 +349,7 @@ function generatePoPdf(poDatas, outputPath, callback) {
   doc.font("Helvetica").fontSize(7);
   doc.moveDown(1);
 
-  doc.text(`Notes: This offer to purchase is referenced to the price stated in vendor's quotation: 235237 date 23-4-2024 and subjected to the following
+  doc.text(`Notes: This offer to purchase is referenced to the price stated in vendor's quotation: ${poDatas.quotationNumber} date ${poDatas.quotationDate} and subjected to the following
 condition:-`);
   doc.moveDown(1);
 

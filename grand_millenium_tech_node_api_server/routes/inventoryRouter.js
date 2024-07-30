@@ -33,5 +33,5 @@ router.post('/validate-items', validateItems);
 
 
 router.post("/bulkAddInv", inventoryController.bulkAddItems)
-
+router.post("/addConstraint", inventoryController.addConstraint)
 module.exports = router;
