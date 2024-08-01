@@ -6,9 +6,13 @@ const PDFDocument = require("pdfkit-table");
 function generatePoPdf(poDatas, outputPath, callback) {
   const doc = new PDFDocument();
 
+  const formatAddress = (addressLines) => {
+    return addressLines.filter((line) => line.trim() !== "-").join(', ');
+  };
+  
   const poData = {
     poNumber: `${poDatas.poNumber}`,
-    date: `${poDatas.date}`,
+    date: `${poDatas.poDate}`,
     shipToAddress: `
     ${poDatas.shipToAddressLine1}
 
@@ -32,14 +36,15 @@ function generatePoPdf(poDatas, outputPath, callback) {
     deliveryDate: "As required",
     notes:
       "2) Vendor guarantees that the goods is free from defect and is fit for its intended use.\n3) Grand Millennium Technology reserves the right to reject any job done that does not meet Grand Millennium Technology's expectations.\nThis is a computer generated Purchase Order. No signature is required.",
-    vendorAddress: `
-      ${poDatas.vendorAddressLine1},
+   
+      vendorAddress: `
+      ${poDatas.vendorAddressLine1}
 
-      ${poDatas.vendorAddressLine2},
+      ${poDatas.vendorAddressLine2}
 
-      ${poDatas.vendorAddressLine3},
+      ${poDatas.vendorAddressLine3 ? poDatas.vendorAddressLine3 : ""}
 
-      ${poDatas.vendorAddressLine4},
+      ${poDatas.vendorAddressLine4 ? poDatas.vendorAddressLine4 : ""}
 
        
 
@@ -238,13 +243,16 @@ function generatePoPdf(poDatas, outputPath, callback) {
     0
   );
 
+  const currencySymbol = poDatas.moc === 'USD' ? '$' : 'RM';
+
   const poItems = poDatas.items.map((item, index) => [
-    `${item.partNo}${item.description}`,
+    item.partNo ? `PN: ${item.partNo} (${item.description})` : item.description,
     item.quantity,
     item.uom,
-    item.unitPrice,
-    item.amount,
+    `${currencySymbol}${parseFloat(item.unitPrice).toFixed(2)}`,
+    `${currencySymbol}${parseFloat(item.amount).toFixed(2)}`,
   ]);
+  
 
   const table = {
     headers: [
@@ -322,7 +330,7 @@ function generatePoPdf(poDatas, outputPath, callback) {
         property: "name",
       },
     ],
-    rows: [[`TOTAL: USD ${totalAmount.toFixed(2)}`]],
+    rows: [[`TOTAL: ${poDatas.moc} ${totalAmount.toFixed(2)}`]],
     x: -100,
     y: y + 50,
     width: 500,

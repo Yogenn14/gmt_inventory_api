@@ -67,6 +67,7 @@ const getInventoryPaginated = async (req, res) => {
       where: searchCondition,
       limit,
       offset,
+      order: [["updatedAt", "DESC"]],
       include: [
         {
           model: SerializedItem,
@@ -170,6 +171,10 @@ const addToInventory = async (req, res) => {
       outDate,
       userEmail,
       supplier,
+      unitPrice,
+      totalPrice,
+      currency,
+      conversionRate
     } = req.body;
 
     const queryConditions = {};
@@ -233,6 +238,10 @@ const addToInventory = async (req, res) => {
       inDate,
       outDate,
       userEmail,
+      unitPrice,
+      totalPrice,
+      currency,
+      conversionRate
     };
 
     //console.log("Received formData:", formData);
@@ -250,6 +259,10 @@ const addToInventory = async (req, res) => {
         condition: condition,
         status: status,
         userEmail: userEmail,
+        unitPrice: unitPrice,
+        totalPrice : totalPrice,
+        currency : currency,
+        conversionRate : conversionRate,
       });
     }
 
@@ -377,6 +390,10 @@ const addUnserializedItem = async (req, res) => {
     condition,
     status,
     userEmail,
+    currency,
+    conversionRate,
+    unitPrice,
+    totalPrice,
   } = req.body;
 
   const transaction = await sequelize.transaction();
@@ -430,6 +447,10 @@ const addUnserializedItem = async (req, res) => {
         condition: condition,
         status: status,
         userEmail: userEmail,
+        totalPrice: totalPrice,
+        unitPrice : unitPrice,
+        currency: currency,
+        conversionRate: conversionRate
       },
       { transaction }
     );
@@ -472,7 +493,14 @@ const shipOutItems = async (req, res) => {
     );
 
     const promises = shipments.map(async (shipment) => {
-      const { unserializedInId, quantity, customer, date } = shipment;
+      const {
+        unserializedInId,
+        quantity,
+        customer,
+        date,
+        perUnitSellingPrice,
+        userEmail
+      } = shipment;
 
       const unserializedInItem = await UnserializedIn.findByPk(
         unserializedInId,
@@ -495,6 +523,9 @@ const shipOutItems = async (req, res) => {
         );
       }
 
+      const profitPerUnit = perUnitSellingPrice - unserializedInItem.unitPrice;
+      const totalProfit = profitPerUnit * quantity;
+
       await unserializedInItem.update(
         {
           quantityChange:
@@ -509,6 +540,10 @@ const shipOutItems = async (req, res) => {
           customer,
           quantity,
           date,
+          shipOutPrice: perUnitSellingPrice,
+          profitPerUnit,
+          totalProfit,
+          userEmail
         },
         { transaction }
       );
@@ -545,6 +580,7 @@ const shipOutItems = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
 
 const revertShipment = async (req, res) => {
   const { unserializedOutId } = req.params;
@@ -615,6 +651,7 @@ const addSerializedPart = async (req, res) => {
     quantity,
     condition,
     status,
+    unitPrice,
     manufactureroem,
     inDate,
     outDate,
@@ -693,6 +730,7 @@ const addSerializedPart = async (req, res) => {
     condition,
     status,
     manufactureroem,
+    unitPrice,
     inDate,
     outDate,
     userEmail,
@@ -921,6 +959,8 @@ const bulkAddItems = async (req, res) => {
         outDate,
         customer,
         warrantyEndDate,
+        unitPrice,
+        totalPrice,
       } = item;
 
       const findInventoryId = await Inventory.findByPk(inventoryId);
@@ -933,7 +973,7 @@ const bulkAddItems = async (req, res) => {
         partDescription: findInventoryId.partDescription,
       };
 
-      if (type === "unserialized") {
+      if (type === "non-serialized") {
         if (
           quantityChange <= 0 ||
           !supplier ||
@@ -961,6 +1001,8 @@ const bulkAddItems = async (req, res) => {
             condition,
             status,
             userEmail,
+            unitPrice,
+            totalPrice
           },
           { transaction }
         );

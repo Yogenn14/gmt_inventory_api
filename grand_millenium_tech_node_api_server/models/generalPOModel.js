@@ -60,10 +60,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
-    notes: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
+    
     condition1: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -76,6 +73,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    authorEmail : {
+      type:DataTypes.STRING,
+      allowNull: false
+    }
   });
 
   return GeneralPOModel;
