@@ -432,7 +432,7 @@ const addUnserializedItem = async (req, res) => {
     }
 
     await Inventory.update(
-      { quantity: findInventoryId.quantity + quantityChange },
+      { quantity: findInventoryId.quantity + quantityChange , inDate : date},
       { where: { id: id }, transaction }
     );
 
@@ -492,6 +492,10 @@ const shipOutItems = async (req, res) => {
       0
     );
 
+    const mostRecentDate = shipments.reduce((latestDate, shipment) => {
+      return new Date(shipment.date) > new Date(latestDate) ? shipment.date : latestDate;
+    }, shipments[0].date);
+
     const promises = shipments.map(async (shipment) => {
       const {
         unserializedInId,
@@ -499,7 +503,7 @@ const shipOutItems = async (req, res) => {
         customer,
         date,
         perUnitSellingPrice,
-        userEmail
+        userEmail,
       } = shipment;
 
       const unserializedInItem = await UnserializedIn.findByPk(
@@ -525,11 +529,11 @@ const shipOutItems = async (req, res) => {
 
       const profitPerUnit = perUnitSellingPrice - unserializedInItem.unitPrice;
       const totalProfit = profitPerUnit * quantity;
+      const shipOutPrice = perUnitSellingPrice * quantity;
 
       await unserializedInItem.update(
         {
-          quantityChange:
-            unserializedInItem.quantityChange - totalRequestedQuantity,
+          quantityChange: unserializedInItem.quantityChange - quantity,
         },
         { transaction }
       );
@@ -540,10 +544,10 @@ const shipOutItems = async (req, res) => {
           customer,
           quantity,
           date,
-          shipOutPrice: perUnitSellingPrice,
+          shipOutPrice,
           profitPerUnit,
           totalProfit,
-          userEmail
+          userEmail,
         },
         { transaction }
       );
@@ -565,7 +569,10 @@ const shipOutItems = async (req, res) => {
     }
 
     await inventoryItem.update(
-      { quantity: inventoryItem.quantity - totalRequestedQuantity },
+      {
+        quantity: inventoryItem.quantity - totalRequestedQuantity,
+        outDate : mostRecentDate
+      },
       { transaction }
     );
 
@@ -744,6 +751,7 @@ const addSerializedPart = async (req, res) => {
       {
         quantity: findInventoryId.quantity + 1,
         totalStock: findInventoryId.totalStock + 1,
+     
       },
       { where: { id: inventoryId }, transaction }
     );
@@ -849,7 +857,7 @@ const updateSerializedItemOut = async (req, res) => {
       transaction,
     });
     await Inventory.update(
-      { quantity: inventoryItem.quantity - updatedItems },
+      { quantity: inventoryItem.quantity - updatedItems , outDate:outDate},
       { where: { id: inventoryId }, transaction }
     );
 
