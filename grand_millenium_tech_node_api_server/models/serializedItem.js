@@ -47,6 +47,22 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DOUBLE,
       allowNull: true,
     },
+    currency: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    conversionRate: {
+      type: DataTypes.DOUBLE,
+      allowNull: true,
+    },
+    sellingPrice: {
+      type: DataTypes.DOUBLE,
+      allowNull: true,
+    },
+    profit: {
+      type: DataTypes.DOUBLE,
+      allowNull: true,
+    },
     userEmail: {
       type: DataTypes.STRING,
       allowNull: false,
