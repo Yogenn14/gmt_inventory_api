@@ -16,7 +16,9 @@ const validateSchema = Joi.object({
     outDate: Joi.date().allow(null, ''),
     customer: Joi.string().allow(''),
     unitPrice: Joi.number().positive().required(),
-    totalPrice: Joi.number().positive().required(),
+    totalPrice: Joi.number().positive().when('type', { is: 'non-serialized', then: Joi.required() }),
+    conversionRate: Joi.number().required(),
+    currency: Joi.string().required(),
 
     warrantyEndDate: Joi.date().when('type', { is: 'serialized', then: Joi.required() })
       .greater(Joi.ref('inDate')).allow(null)

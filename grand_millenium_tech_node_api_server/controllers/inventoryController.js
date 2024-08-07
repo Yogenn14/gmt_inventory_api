@@ -966,6 +966,8 @@ const bulkAddItems = async (req, res) => {
         warrantyEndDate,
         unitPrice,
         totalPrice,
+        currency,
+        conversionRate
       } = item;
 
       const findInventoryId = await Inventory.findByPk(inventoryId);
@@ -991,7 +993,7 @@ const bulkAddItems = async (req, res) => {
         }
 
         await Inventory.update(
-          { quantity: findInventoryId.quantity + quantityChange },
+          { quantity: findInventoryId.quantity + quantityChange , inDate: inDate },
           { where: { id: inventoryId }, transaction }
         );
 
@@ -1007,7 +1009,9 @@ const bulkAddItems = async (req, res) => {
             status,
             userEmail,
             unitPrice,
-            totalPrice
+            totalPrice,
+            currency,
+            conversionRate
           },
           { transaction }
         );
@@ -1038,6 +1042,7 @@ const bulkAddItems = async (req, res) => {
           {
             quantity: findInventoryId.quantity + 1,
             totalStock: findInventoryId.totalStock + 1,
+            inDate: inDate
           },
           { where: { id: inventoryId }, transaction }
         );
@@ -1056,6 +1061,10 @@ const bulkAddItems = async (req, res) => {
             supplier,
             customer,
             warrantyEndDate,
+            currency,
+            unitPrice,
+            conversionRate
+            
           },
           { transaction }
         );
