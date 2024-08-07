@@ -666,6 +666,8 @@ const addSerializedPart = async (req, res) => {
     supplier,
     customer,
     warrantyEndDate,
+    currency,
+    conversionRate
   } = req.body;
 
   const transaction = await sequelize.transaction();
@@ -744,6 +746,8 @@ const addSerializedPart = async (req, res) => {
     supplier,
     customer,
     warrantyEndDate,
+    conversionRate,
+    currency
   };
 
   try {
@@ -785,7 +789,7 @@ const addSerializedPart = async (req, res) => {
 const updateSerializedItemOut = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { serialNumbers, outDate, customer, userEmail } = req.body;
+    const { serialNumbers, outDate, customer, userEmail, sellingPrice } = req.body;
 
     if (!Array.isArray(serialNumbers) || serialNumbers.length === 0) {
       return res
@@ -798,11 +802,12 @@ const updateSerializedItemOut = async (req, res) => {
     if (!customer) {
       return res.status(400).json({ error: "Customer is required" });
     }
+    if (sellingPrice < 0) {
+      return res.status(400).json({ error: "Selling price is invalid" });
+    }
 
     const serializedItems = await SerializedItem.findAll({
-      where: {
-        serialNumber: serialNumbers,
-      },
+      where: { serialNumber: serialNumbers },
       transaction,
     });
 
@@ -813,9 +818,7 @@ const updateSerializedItemOut = async (req, res) => {
         .json({ error: "Some serial numbers were not found" });
     }
 
-    const inventoryIds = new Set(
-      serializedItems.map((item) => item.inventoryId)
-    );
+    const inventoryIds = new Set(serializedItems.map((item) => item.inventoryId));
     if (inventoryIds.size > 1) {
       await transaction.rollback();
       return res
@@ -823,9 +826,7 @@ const updateSerializedItemOut = async (req, res) => {
         .json({ error: "Serial numbers must belong to the same inventory" });
     }
 
-    const invalidEntries = serializedItems.some(
-      (item) => item.outDate || item.customer
-    );
+    const invalidEntries = serializedItems.some((item) => item.outDate || item.customer);
     if (invalidEntries) {
       await transaction.rollback();
       return res
@@ -835,29 +836,24 @@ const updateSerializedItemOut = async (req, res) => {
 
     const inventoryId = Array.from(inventoryIds)[0];
 
-    const [updateCount, updatedItems] = await SerializedItem.update(
-      { outDate, customer },
-      {
-        where: {
-          serialNumber: serialNumbers,
+    const updatedItems = [];
+    for (const item of serializedItems) {
+      const profit = sellingPrice - item.unitPrice;
+      const updatedItem = await item.update(
+        {
+          outDate,
+          customer,
+          sellingPrice,
+          profit,
         },
-        returning: true,
-        transaction,
-      }
-    );
-
-    if (updateCount === 0) {
-      await transaction.rollback();
-      return res
-        .status(404)
-        .json({ error: "No matching serialized items found" });
+        { transaction }
+      );
+      updatedItems.push(updatedItem);
     }
 
-    const inventoryItem = await Inventory.findByPk(inventoryId, {
-      transaction,
-    });
+    const inventoryItem = await Inventory.findByPk(inventoryId, { transaction });
     await Inventory.update(
-      { quantity: inventoryItem.quantity - updatedItems , outDate:outDate},
+      { quantity: inventoryItem.quantity - updatedItems.length, outDate },
       { where: { id: inventoryId }, transaction }
     );
 
@@ -871,7 +867,7 @@ const updateSerializedItemOut = async (req, res) => {
 
     return res.status(200).json({
       message: "Serialized items updated successfully",
-      updatedItems: updatedItems,
+      updatedItems,
     });
   } catch (error) {
     if (transaction) await transaction.rollback();
@@ -879,6 +875,7 @@ const updateSerializedItemOut = async (req, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 //admin
 const revertSerializedItemOut = async (req, res) => {
@@ -969,6 +966,8 @@ const bulkAddItems = async (req, res) => {
         warrantyEndDate,
         unitPrice,
         totalPrice,
+        currency,
+        conversionRate
       } = item;
 
       const findInventoryId = await Inventory.findByPk(inventoryId);
@@ -994,7 +993,7 @@ const bulkAddItems = async (req, res) => {
         }
 
         await Inventory.update(
-          { quantity: findInventoryId.quantity + quantityChange },
+          { quantity: findInventoryId.quantity + quantityChange , inDate: inDate },
           { where: { id: inventoryId }, transaction }
         );
 
@@ -1010,7 +1009,9 @@ const bulkAddItems = async (req, res) => {
             status,
             userEmail,
             unitPrice,
-            totalPrice
+            totalPrice,
+            currency,
+            conversionRate
           },
           { transaction }
         );
@@ -1041,6 +1042,7 @@ const bulkAddItems = async (req, res) => {
           {
             quantity: findInventoryId.quantity + 1,
             totalStock: findInventoryId.totalStock + 1,
+            inDate: inDate
           },
           { where: { id: inventoryId }, transaction }
         );
@@ -1059,6 +1061,10 @@ const bulkAddItems = async (req, res) => {
             supplier,
             customer,
             warrantyEndDate,
+            currency,
+            unitPrice,
+            conversionRate
+            
           },
           { transaction }
         );

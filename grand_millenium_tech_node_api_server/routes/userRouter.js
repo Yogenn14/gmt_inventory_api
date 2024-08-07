@@ -23,6 +23,9 @@ router.post("/login", userController.login);
 
 router.get("/userdata", authenticateToken, userController.getUserByToken);
 
+router.get("/getAllUsers", userController.getAllUsers);
+
+
 router.put("/edit/:email", userController.editUser);
 
 router.post("/refreshToken", userController.refreshToken);

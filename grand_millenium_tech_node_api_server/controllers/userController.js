@@ -13,10 +13,10 @@ const User = db.users;
 //addUser
 const addUser = async (req, res) => {
   try {
-    const { name, image, email, password, role } = req.body;
+    const { name, image, email, password, role, assignedBy, linkedIn, twitter, facebook } = req.body;
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).send({ message: "All fields are required" });
+    if (!name || !email || !password || !role || !assignedBy) {
+      return res.status(400).send({ message: "Name,email,password,role,assignedBy are required" });
     }
 
     const existingUser = await User.findOne({ where: { email: email } });
@@ -27,12 +27,24 @@ const addUser = async (req, res) => {
         .send({ message: "User already exists with this email" });
     }
 
+    const existingUserMail = await User.findOne({ where: { email: assignedBy } });
+
+    if (!existingUserMail) {
+      return res
+        .status(400)
+        .send({ message: "Assigned By user does not exist" });
+    }
+
     const user = await User.create({
       name: name,
       image: image,
       email: email,
       hashedPassword: password,
       role: role,
+      assignedBy : assignedBy,
+      linkedIn : linkedIn,
+      facebook : facebook,
+      twitter: twitter,
     });
 
     res.status(200).send({ message: "Successfully added user", user });
@@ -194,7 +206,7 @@ const getUserByToken = async (req, res) => {
 const editUser = async (req, res) => {
   try {
     const userEmail = req.params.email;
-    const { name, email } = req.body;
+    const { name, email, linkedIn, twitter, facebook, assignedBy } = req.body;
     const user = await User.findOne({ where: { email: userEmail } });
 
     if (!user) {
@@ -203,6 +215,10 @@ const editUser = async (req, res) => {
 
     user.name = name;
     user.email = email;
+    user.twitter = twitter,
+    user.facebook = facebook,
+    user.linkedIn = linkedIn
+    user.assignedBy = assignedBy
 
     await user.save();
 
@@ -245,6 +261,18 @@ const uploadProfilePhoto = async (req, res) => {
     console.error(error);
     res.status(500).send({ message: "Internal Server Error" });
   }
+}
+
+const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: { exclude: ["hashedPassword", "refreshToken"] },
+    });
+    res.status(200).send({ users });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
 };
 
 module.exports = {
@@ -254,4 +282,5 @@ module.exports = {
   editUser,
   refreshToken,
   uploadProfilePhoto,
+  getAllUsers
 };
