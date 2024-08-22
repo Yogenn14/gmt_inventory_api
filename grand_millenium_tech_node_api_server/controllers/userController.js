@@ -6,6 +6,7 @@ const { verify } = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
+const createNotification = require("../services/emailServices");
 
 //create model
 const User = db.users;
@@ -16,23 +17,23 @@ const addUser = async (req, res) => {
     const { name, image, email, password, role, assignedBy, linkedIn, twitter, facebook } = req.body;
 
     if (!name || !email || !password || !role || !assignedBy) {
-      return res.status(400).send({ message: "Name,email,password,role,assignedBy are required" });
+      return res.status(400).send({ message: "Name, email, password, role, assignedBy are required" });
     }
 
     const existingUser = await User.findOne({ where: { email: email } });
 
     if (existingUser) {
-      return res
-        .status(400)
-        .send({ message: "User already exists with this email" });
+      return res.status(400).send({ message: "User already exists with this email" });
     }
 
     const existingUserMail = await User.findOne({ where: { email: assignedBy } });
 
     if (!existingUserMail) {
-      return res
-        .status(400)
-        .send({ message: "Assigned By user does not exist" });
+      return res.status(400).send({ message: "Assigned By user does not exist" });
+    }
+
+    if (existingUserMail.role !== 'ADMIN') {
+      return res.status(403).send({ message: "Only ADMIN can perform this operation" });
     }
 
     const user = await User.create({
@@ -41,18 +42,39 @@ const addUser = async (req, res) => {
       email: email,
       hashedPassword: password,
       role: role,
-      assignedBy : assignedBy,
-      linkedIn : linkedIn,
-      facebook : facebook,
+      assignedBy: assignedBy,
+      linkedIn: linkedIn,
+      facebook: facebook,
       twitter: twitter,
     });
 
+    const emailSubject = `A new user ${email} has been added to GMT Inventory System as ${role}`;
+
+    const emailText = `The following person with the following email address:\n
+    Email: ${email}\n
+    Role: ${role}\n
+    Temporary Password: ${password}\n
+
+    Has been added and given access to the GMT Inventory Management system, assigned by ${assignedBy}. \n Please forward this email to the new user.`;
+
+    const receiverEmail = `Access to GMT Inventory: ${email}`;
+
+    const receiverText = `You have been given access to the GMT Inventory System. Here are your credentials with a temporary password:\n
+    Email: ${email}\n
+    Role: ${role}\n
+    Temporary Password: ${password}\n
+    Please change your password upon login for better security.`;
+
     res.status(200).send({ message: "Successfully added user", user });
+    await createNotification("dhia@grandmtech.com", emailSubject, emailText,  []);
+    await createNotification(`${email}`, receiverEmail, receiverText);
+
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "Internal Server Error" });
   }
 };
+
 
 //login
 const login = async (req, res) => {
@@ -127,7 +149,7 @@ const refreshToken = async (req, res) => {
       // Verify the refresh token
       const decoded = verify(
         refreshToken,
-        "5e56eb7c135eb724d9f588ae1b46317f56a5d3e16284471a28002c81e73c2c15"
+        `${process.env.JWT_REFRESH_KEY}`
       );
 
       // Retrieve user details based on the refresh token
@@ -142,7 +164,7 @@ const refreshToken = async (req, res) => {
       // Generate a new access token
       const accessToken = sign(
         { id: user.id, email: user.email, role: user.role, image: user.image },
-        "fh3H5y8Sm91brlh2chNXZqeihWBP7KdX",
+        `${process.env.JWT_SECRET_KEY}`,
         { expiresIn: "1h" }
       );
 

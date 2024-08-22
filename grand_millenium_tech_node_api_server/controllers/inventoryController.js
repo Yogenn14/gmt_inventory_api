@@ -12,6 +12,7 @@ const { sequelize } = db;
 const createNotification = require("../services/emailServices");
 const { validateSchema } = require("../middleware/validationSchema");
 const { validate } = require("uuid");
+const { custom } = require("joi");
 
 const Inventory = db.inventory;
 const InventoryLog = db.inventoryLog;
@@ -169,6 +170,8 @@ const addToInventory = async (req, res) => {
       status,
       inDate,
       outDate,
+      shippingPriceBatch,
+      customsPerBatch,
       userEmail,
       supplier,
       unitPrice,
@@ -241,7 +244,9 @@ const addToInventory = async (req, res) => {
       unitPrice,
       totalPrice,
       currency,
-      conversionRate
+      conversionRate,
+      shippingPriceBatch,
+      customsPerBatch
     };
 
     //console.log("Received formData:", formData);
@@ -263,6 +268,8 @@ const addToInventory = async (req, res) => {
         totalPrice : totalPrice,
         currency : currency,
         conversionRate : conversionRate,
+        shippingPriceBatch : shippingPriceBatch,
+        customsPerBatch : customsPerBatch
       });
     }
 
@@ -393,6 +400,8 @@ const addUnserializedItem = async (req, res) => {
     currency,
     conversionRate,
     unitPrice,
+    shippingPriceBatch,
+    customsPerBatch,
     totalPrice,
   } = req.body;
 
@@ -449,6 +458,8 @@ const addUnserializedItem = async (req, res) => {
         userEmail: userEmail,
         totalPrice: totalPrice,
         unitPrice : unitPrice,
+        shippingPriceBatch : shippingPriceBatch,
+        customsPerBatch : customsPerBatch,
         currency: currency,
         conversionRate: conversionRate
       },
@@ -480,7 +491,7 @@ const addUnserializedItem = async (req, res) => {
 
 
 const shipOutItems = async (req, res) => {
-  const { id } = req.params;
+  const { id } = req.params;    
   const { shipments } = req.body;
 
   const transaction = await sequelize.transaction();
@@ -659,6 +670,8 @@ const addSerializedPart = async (req, res) => {
     condition,
     status,
     unitPrice,
+    shippingPricePerUnit,
+    customsPerUnit,
     manufactureroem,
     inDate,
     outDate,
@@ -740,6 +753,8 @@ const addSerializedPart = async (req, res) => {
     status,
     manufactureroem,
     unitPrice,
+    shippingPricePerUnit,
+    customsPerUnit,
     inDate,
     outDate,
     userEmail,
@@ -755,6 +770,7 @@ const addSerializedPart = async (req, res) => {
       {
         quantity: findInventoryId.quantity + 1,
         totalStock: findInventoryId.totalStock + 1,
+        inDate : inDate
      
       },
       { where: { id: inventoryId }, transaction }
@@ -785,11 +801,11 @@ const addSerializedPart = async (req, res) => {
   }
 };
 
-//ship out serialized item-[outDate, customer]
+//ship out serialized item-[outDate, customer,userEmail,sellingPrice,paymentDate]
 const updateSerializedItemOut = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { serialNumbers, outDate, customer, userEmail, sellingPrice } = req.body;
+    const { serialNumbers, outDate, customer, userEmail, sellingPrice, paymentDate } = req.body;
 
     if (!Array.isArray(serialNumbers) || serialNumbers.length === 0) {
       return res
@@ -838,13 +854,14 @@ const updateSerializedItemOut = async (req, res) => {
 
     const updatedItems = [];
     for (const item of serializedItems) {
-      const profit = sellingPrice - item.unitPrice;
+      const profit = sellingPrice - item.unitPrice -item.shippingPricePerUnit - item.customsPerUnit;
       const updatedItem = await item.update(
         {
           outDate,
           customer,
           sellingPrice,
           profit,
+          paymentDate
         },
         { transaction }
       );

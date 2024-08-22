@@ -46,6 +46,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: false,
       },
+      paymentDate: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
     },
     {
       indexes: [

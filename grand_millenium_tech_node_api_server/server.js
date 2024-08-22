@@ -31,6 +31,7 @@ const fileRouter = require("./routes/fileRouter");
 const supplierRouter = require("./routes/supplierRouter");
 const inventoryRouter = require("./routes/inventoryRouter");
 const poRouter = require("./routes/poRouter");
+const contactRouter = require("./routes/contactRouter")
 
 app.use("/api/products", productRouter);
 app.use("/api/user", userRouter);
@@ -39,6 +40,7 @@ app.use("/api/files", fileRouter);
 app.use("/api/supplier", supplierRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/po", poRouter);
+app.use("/api/contact", contactRouter)
 
 const PORT = process.env.PORT || 8083;
 

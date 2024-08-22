@@ -39,12 +39,24 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
+    paymentDate: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     warrantyEndDate: {
       type: DataTypes.DATE,
       allowNull: true,
     },
     unitPrice: {
       type: DataTypes.DOUBLE,
+      allowNull: true,
+    },
+    shippingPricePerUnit : {
+      type:DataTypes.DOUBLE,
+      allowNull: true,
+    },
+    customsPerUnit : {
+      type:DataTypes.DOUBLE,
       allowNull: true,
     },
     currency: {

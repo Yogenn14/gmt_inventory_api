@@ -48,10 +48,19 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DOUBLE,
         allowNull: true,
       },
+      shippingPriceBatch : {
+        type:DataTypes.DOUBLE,
+        allowNull: true,
+      },
+      customsPerBatch : {
+        type:DataTypes.DOUBLE,
+        allowNull: true,
+      },
       totalPrice: {
         type: DataTypes.DOUBLE,
         allowNull: true,
       },
+
       currency: {
         type: DataTypes.STRING,
       },
