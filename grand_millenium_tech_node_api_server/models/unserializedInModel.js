@@ -48,12 +48,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DOUBLE,
         allowNull: true,
       },
-      shippingPriceBatch : {
-        type:DataTypes.DOUBLE,
+      shippingPriceBatch: {
+        type: DataTypes.DOUBLE,
         allowNull: true,
       },
-      customsPerBatch : {
-        type:DataTypes.DOUBLE,
+      customsPerBatch: {
+        type: DataTypes.DOUBLE,
         allowNull: true,
       },
       totalPrice: {
@@ -64,10 +64,12 @@ module.exports = (sequelize, DataTypes) => {
       currency: {
         type: DataTypes.STRING,
       },
-      conversionRate : {
-        type: DataTypes.DOUBLE
+      conversionRate: {
+        type: DataTypes.DOUBLE,
       },
-    
+      source: {
+        type: DataTypes.STRING,
+      },
       userEmail: {
         type: DataTypes.STRING,
         allowNull: false,

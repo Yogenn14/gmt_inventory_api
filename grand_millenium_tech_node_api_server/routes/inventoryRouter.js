@@ -1,6 +1,6 @@
 const inventoryController = require("../controllers/inventoryController");
 const router = require("express").Router();
-const { validateItems } = require('../controllers/inventoryController')
+const { validateItems } = require("../controllers/inventoryController");
 //[GET]
 router.get("/getInventory", inventoryController.getInventoryPaginated);
 
@@ -29,9 +29,15 @@ router.delete(
 );
 
 router.post("/validatePNPD", inventoryController.validatePNPD);
-router.post('/validate-items', validateItems);
+router.post("/validate-items", validateItems);
 
+router.post("/bulkAddInv", inventoryController.bulkAddItems);
+router.post("/addConstraint", inventoryController.addConstraint);
 
-router.post("/bulkAddInv", inventoryController.bulkAddItems)
-router.post("/addConstraint", inventoryController.addConstraint)
+//edit/
+router.put(
+  "/editSerialized/:id/:serialId",
+  inventoryController.updateSerializedPart
+);
+
 module.exports = router;

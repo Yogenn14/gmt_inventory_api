@@ -14,26 +14,48 @@ const User = db.users;
 //addUser
 const addUser = async (req, res) => {
   try {
-    const { name, image, email, password, role, assignedBy, linkedIn, twitter, facebook } = req.body;
+    const {
+      name,
+      image,
+      email,
+      password,
+      role,
+      assignedBy,
+      linkedIn,
+      twitter,
+      facebook,
+    } = req.body;
 
     if (!name || !email || !password || !role || !assignedBy) {
-      return res.status(400).send({ message: "Name, email, password, role, assignedBy are required" });
+      return res
+        .status(400)
+        .send({
+          message: "Name, email, password, role, assignedBy are required",
+        });
     }
 
     const existingUser = await User.findOne({ where: { email: email } });
 
     if (existingUser) {
-      return res.status(400).send({ message: "User already exists with this email" });
+      return res
+        .status(400)
+        .send({ message: "User already exists with this email" });
     }
 
-    const existingUserMail = await User.findOne({ where: { email: assignedBy } });
+    const existingUserMail = await User.findOne({
+      where: { email: assignedBy },
+    });
 
     if (!existingUserMail) {
-      return res.status(400).send({ message: "Assigned By user does not exist" });
+      return res
+        .status(400)
+        .send({ message: "Assigned By user does not exist" });
     }
 
-    if (existingUserMail.role !== 'ADMIN') {
-      return res.status(403).send({ message: "Only ADMIN can perform this operation" });
+    if (existingUserMail.role !== "ADMIN") {
+      return res
+        .status(403)
+        .send({ message: "Only ADMIN can perform this operation" });
     }
 
     const user = await User.create({
@@ -66,15 +88,18 @@ const addUser = async (req, res) => {
     Please change your password upon login for better security.`;
 
     res.status(200).send({ message: "Successfully added user", user });
-    await createNotification("dhia@grandmtech.com", emailSubject, emailText,  []);
+    await createNotification(
+      "dhia@grandmtech.com",
+      emailSubject,
+      emailText,
+      []
+    );
     await createNotification(`${email}`, receiverEmail, receiverText);
-
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "Internal Server Error" });
   }
 };
-
 
 //login
 const login = async (req, res) => {
@@ -147,10 +172,7 @@ const refreshToken = async (req, res) => {
 
     try {
       // Verify the refresh token
-      const decoded = verify(
-        refreshToken,
-        `${process.env.JWT_REFRESH_KEY}`
-      );
+      const decoded = verify(refreshToken, `${process.env.JWT_REFRESH_KEY}`);
 
       // Retrieve user details based on the refresh token
       const user = await User.findOne({
@@ -237,10 +259,10 @@ const editUser = async (req, res) => {
 
     user.name = name;
     user.email = email;
-    user.twitter = twitter,
-    user.facebook = facebook,
-    user.linkedIn = linkedIn
-    user.assignedBy = assignedBy
+    (user.twitter = twitter),
+      (user.facebook = facebook),
+      (user.linkedIn = linkedIn);
+    user.assignedBy = assignedBy;
 
     await user.save();
 
@@ -283,7 +305,7 @@ const uploadProfilePhoto = async (req, res) => {
     console.error(error);
     res.status(500).send({ message: "Internal Server Error" });
   }
-}
+};
 
 const getAllUsers = async (req, res) => {
   try {
@@ -304,5 +326,5 @@ module.exports = {
   editUser,
   refreshToken,
   uploadProfilePhoto,
-  getAllUsers
+  getAllUsers,
 };

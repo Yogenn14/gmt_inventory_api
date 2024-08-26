@@ -51,12 +51,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DOUBLE,
       allowNull: true,
     },
-    shippingPricePerUnit : {
-      type:DataTypes.DOUBLE,
+    shippingPricePerUnit: {
+      type: DataTypes.DOUBLE,
       allowNull: true,
     },
-    customsPerUnit : {
-      type:DataTypes.DOUBLE,
+    customsPerUnit: {
+      type: DataTypes.DOUBLE,
       allowNull: true,
     },
     currency: {
@@ -90,6 +90,10 @@ module.exports = (sequelize, DataTypes) => {
     customer: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    source: {
+      type: DataTypes.STRING,
+      allowNull: false,
     },
   });
   SerializedItem.associate = function (models) {
