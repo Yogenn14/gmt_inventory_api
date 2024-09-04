@@ -95,6 +95,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    imagePath: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
   });
   SerializedItem.associate = function (models) {
     SerializedItem.belongsTo(models.inventory, {
