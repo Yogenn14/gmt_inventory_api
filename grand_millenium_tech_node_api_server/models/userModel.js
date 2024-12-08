@@ -32,6 +32,22 @@ module.exports = (sequelize, DataTypes) => {
       role: {
         type: DataTypes.STRING,
       },
+      assignedBy: {
+        type: DataTypes.STRING,
+      },
+      linkedIn: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      twitter: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      facebook: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+
 
       refreshToken: {
         type: DataTypes.STRING,

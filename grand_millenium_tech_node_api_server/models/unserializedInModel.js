@@ -1,3 +1,4 @@
+const { type } = require("os");
 const { inventory } = require(".");
 
 module.exports = (sequelize, DataTypes) => {
@@ -15,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
       totalPurchased: {
         type: DataTypes.INTEGER,
       },
+      imagePath: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       quantityChange: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -28,6 +33,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         defaultValue: DataTypes.NOW,
       },
+
       supplier: {
         type: DataTypes.STRING,
         allowNull: true,
@@ -48,17 +54,29 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DOUBLE,
         allowNull: true,
       },
+      shippingPriceBatch: {
+        type: DataTypes.DOUBLE,
+        allowNull: true,
+      },
+      customsPerBatch: {
+        type: DataTypes.DOUBLE,
+        allowNull: true,
+      },
       totalPrice: {
         type: DataTypes.DOUBLE,
         allowNull: true,
       },
+
       currency: {
         type: DataTypes.STRING,
       },
-      conversionRate : {
-        type: DataTypes.DOUBLE
+
+      conversionRate: {
+        type: DataTypes.DOUBLE,
       },
-    
+      source: {
+        type: DataTypes.STRING,
+      },
       userEmail: {
         type: DataTypes.STRING,
         allowNull: false,

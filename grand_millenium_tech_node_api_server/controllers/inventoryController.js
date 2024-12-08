@@ -12,6 +12,8 @@ const { sequelize } = db;
 const createNotification = require("../services/emailServices");
 const { validateSchema } = require("../middleware/validationSchema");
 const { validate } = require("uuid");
+const { custom } = require("joi");
+const sharp = require("sharp");
 
 const Inventory = db.inventory;
 const InventoryLog = db.inventoryLog;
@@ -169,12 +171,14 @@ const addToInventory = async (req, res) => {
       status,
       inDate,
       outDate,
+      shippingPriceBatch,
+      customsPerBatch,
       userEmail,
       supplier,
       unitPrice,
       totalPrice,
       currency,
-      conversionRate
+      conversionRate,
     } = req.body;
 
     const queryConditions = {};
@@ -241,7 +245,9 @@ const addToInventory = async (req, res) => {
       unitPrice,
       totalPrice,
       currency,
-      conversionRate
+      conversionRate,
+      shippingPriceBatch,
+      customsPerBatch,
     };
 
     //console.log("Received formData:", formData);
@@ -260,9 +266,12 @@ const addToInventory = async (req, res) => {
         status: status,
         userEmail: userEmail,
         unitPrice: unitPrice,
-        totalPrice : totalPrice,
-        currency : currency,
-        conversionRate : conversionRate,
+        totalPrice: totalPrice,
+        currency: currency,
+        conversionRate: conversionRate,
+        shippingPriceBatch: shippingPriceBatch,
+        customsPerBatch: customsPerBatch,
+        source: "MANUAL ENTRY",
       });
     }
 
@@ -290,7 +299,8 @@ const addToInventory = async (req, res) => {
 
 const addConstraint = async (req, res) => {
   try {
-    const { partNumber, partDescription, type, userEmail } = req.body;
+    const { partNumber, partDescription, type, userEmail, consumables } =
+      req.body;
 
     if (!partNumber || !partDescription || !type) {
       return res.status(400).json({
@@ -300,7 +310,8 @@ const addConstraint = async (req, res) => {
 
     if (type !== "serialized" && type !== "non-serialized") {
       return res.status(400).json({
-        error: "The type field must be either 'serialized' or 'non-serialized'.",
+        error:
+          "The type field must be either 'serialized' or 'non-serialized'.",
       });
     }
 
@@ -310,12 +321,19 @@ const addConstraint = async (req, res) => {
 
     if (existingItem) {
       return res.status(400).json({
-        error: "An item with the same part number and part description combination already exists in the database.",
+        error:
+          "An item with the same part number and part description combination already exists in the database.",
         partNumber: partNumber,
         partDescription: partDescription,
         inventoryId: existingItem.id,
         type: existingItem.type,
       });
+    }
+
+    if (consumables === true && type === "serialized") {
+      return res
+        .status(400)
+        .json({ error: "Serialized item cannot be consumables" });
     }
 
     const formData = {
@@ -330,6 +348,7 @@ const addConstraint = async (req, res) => {
       inDate: null,
       outDate: null,
       userEmail,
+      consumables,
     };
 
     const inventory = await Inventory.create(formData);
@@ -369,115 +388,15 @@ const validatePNPD = async (req, res) => {
       });
     }
 
-    return res
-      .status(200)
-      .json({ message: "Part number and part description does not exist", exist: "false" });
+    return res.status(200).json({
+      message: "Part number and part description does not exist",
+      exist: "false",
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: "Internal server error" });
   }
 };
-
-const addUnserializedItem = async (req, res) => {
-  const { id } = req.params;
-  const inventoryId = id;
-
-  const {
-    quantityChange,
-    date,
-    supplier,
-    manufactureroem,
-    condition,
-    status,
-    userEmail,
-    currency,
-    conversionRate,
-    unitPrice,
-    totalPrice,
-  } = req.body;
-
-  const transaction = await sequelize.transaction();
-
-  try {
-    const findInventoryId = await Inventory.findByPk(id);
-    if (!findInventoryId) {
-      await transaction.rollback();
-      return res.status(400).json({ error: "Cannot find this inventoryID" });
-    }
-
-    const partDetails = {
-      partNumber: findInventoryId.partNumber,
-      partDescription: findInventoryId.partDescription,
-    };
-
-    if (
-      quantityChange <= 0 ||
-      !supplier ||
-      !manufactureroem ||
-      !condition ||
-      !status ||
-      !date
-    ) {
-      await transaction.rollback();
-      return res.status(400).json({ error: "Invalid input parameters" });
-    }
-
-    const { type } = findInventoryId;
-
-    if (type === "serialized") {
-      await transaction.rollback();
-      return res
-        .status(400)
-        .json({ error: "Serialized Item cannot be added into this" });
-    }
-
-    await Inventory.update(
-      { quantity: findInventoryId.quantity + quantityChange , inDate : date},
-      { where: { id: id }, transaction }
-    );
-
-    const unserializedIn = await UnserializedIn.create(
-      {
-        inventoryId: id,
-        quantityChange: quantityChange,
-        totalPurchased: quantityChange,
-        date: date,
-        supplier: supplier,
-        manufactureroem: manufactureroem,
-        condition: condition,
-        status: status,
-        userEmail: userEmail,
-        totalPrice: totalPrice,
-        unitPrice : unitPrice,
-        currency: currency,
-        conversionRate: conversionRate
-      },
-      { transaction }
-    );
-
-    await transaction.commit();
-
-    //mail noti
-    const emailSubject = `Beta-GMT Inventory [Unserialized] Item Added [Part Number: ${
-      partDetails.partNumber !== null ? partDetails.partNumber : "unspecified"
-    }] [Part Description: ${
-      partDetails.partDescription !== null
-        ? partDetails.partDescription
-        : "unspecified"
-    }]`;
-    const emailText = `A new item has been added to the inventory:\n\nPart Description: ${partDetails.partDescription}\nPart Number: ${partDetails.partNumber}\n\nType: ${type}\nQuantity : ${quantityChange}\nIn Date : ${date}\nCreated by: ${userEmail}`;
-    await createNotification("dhia@grandmtech.com", emailSubject, emailText);
-
-    return res.status(201).json({
-      message: "Successfully created",
-      partData: partDetails,
-    });
-  } catch (error) {
-    if (transaction && !transaction.finished) await transaction.rollback();
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
-
 
 const shipOutItems = async (req, res) => {
   const { id } = req.params;
@@ -493,7 +412,9 @@ const shipOutItems = async (req, res) => {
     );
 
     const mostRecentDate = shipments.reduce((latestDate, shipment) => {
-      return new Date(shipment.date) > new Date(latestDate) ? shipment.date : latestDate;
+      return new Date(shipment.date) > new Date(latestDate)
+        ? shipment.date
+        : latestDate;
     }, shipments[0].date);
 
     const promises = shipments.map(async (shipment) => {
@@ -503,6 +424,7 @@ const shipOutItems = async (req, res) => {
         customer,
         date,
         perUnitSellingPrice,
+        paymentDate,
         userEmail,
       } = shipment;
 
@@ -547,6 +469,7 @@ const shipOutItems = async (req, res) => {
           shipOutPrice,
           profitPerUnit,
           totalProfit,
+          paymentDate,
           userEmail,
         },
         { transaction }
@@ -571,7 +494,7 @@ const shipOutItems = async (req, res) => {
     await inventoryItem.update(
       {
         quantity: inventoryItem.quantity - totalRequestedQuantity,
-        outDate : mostRecentDate
+        outDate: mostRecentDate,
       },
       { transaction }
     );
@@ -587,7 +510,6 @@ const shipOutItems = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
-
 
 const revertShipment = async (req, res) => {
   const { unserializedOutId } = req.params;
@@ -649,16 +571,133 @@ const revertShipment = async (req, res) => {
   }
 };
 
+const addUnserializedItem = async (req, res) => {
+  const { id } = req.params;
+  const inventoryId = id;
+
+  let {
+    quantityChange,
+    date,
+    supplier,
+    manufactureroem,
+    condition,
+    status,
+    userEmail,
+    currency,
+    conversionRate,
+    unitPrice,
+    shippingPriceBatch,
+    customsPerBatch,
+    totalPrice,
+    warrantyEndDate,
+  } = req.body;
+
+  // Convert strings to numbers
+  quantityChange = Number(quantityChange);
+  conversionRate = Number(conversionRate);
+  unitPrice = Number(unitPrice);
+  shippingPriceBatch = Number(shippingPriceBatch);
+  customsPerBatch = Number(customsPerBatch);
+  totalPrice = Number(totalPrice);
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const findInventoryId = await Inventory.findByPk(id);
+    if (!findInventoryId) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Cannot find this inventoryID" });
+    }
+
+    const partDetails = {
+      partNumber: findInventoryId.partNumber,
+      partDescription: findInventoryId.partDescription,
+    };
+
+    if (
+      quantityChange <= 0 ||
+      !supplier ||
+      !manufactureroem ||
+      !condition ||
+      !status ||
+      !date
+    ) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Invalid input parameters" });
+    }
+
+    const { type } = findInventoryId;
+
+    if (type === "serialized") {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Serialized Item cannot be added into this" });
+    }
+
+    // Handle image saving
+    let imagePath = null;
+    if (req.file) {
+      // Save only the filename
+      imagePath = req.file.filename;
+
+      // Log the imagePath for debugging
+      console.log("Image Path:", imagePath);
+    }
+
+    await Inventory.update(
+      { quantity: findInventoryId.quantity + quantityChange, inDate: date },
+      { where: { id: id }, transaction }
+    );
+
+    const unserializedIn = await UnserializedIn.create(
+      {
+        inventoryId: id,
+        quantityChange: quantityChange,
+        totalPurchased: quantityChange,
+        date: date,
+        supplier: supplier,
+        manufactureroem: manufactureroem,
+        condition: condition,
+        status: status,
+        userEmail: userEmail,
+        totalPrice: totalPrice,
+        unitPrice: unitPrice,
+        shippingPriceBatch: shippingPriceBatch,
+        customsPerBatch: customsPerBatch,
+        currency: currency,
+        conversionRate: conversionRate,
+        source: "MANUAL ENTRY",
+        imagePath: imagePath,
+        warrantyEndDate: warrantyEndDate,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return res.status(201).json({
+      message: "Successfully created",
+      partData: partDetails,
+    });
+  } catch (error) {
+    if (transaction && !transaction.finished) await transaction.rollback();
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 //add serialized item to inventory -InDate-[item in]
 const addSerializedPart = async (req, res) => {
   const { id } = req.params;
   const inventoryId = id;
-  const {
+  let {
     serialNumber,
     quantity,
     condition,
     status,
     unitPrice,
+    shippingPricePerUnit,
+    customsPerUnit,
     manufactureroem,
     inDate,
     outDate,
@@ -666,7 +705,16 @@ const addSerializedPart = async (req, res) => {
     supplier,
     customer,
     warrantyEndDate,
+    currency,
+    conversionRate,
   } = req.body;
+
+  quantity = Number(quantity);
+  conversionRate = Number(conversionRate);
+  unitPrice = Number(unitPrice);
+  shippingPricePerUnit = Number(shippingPricePerUnit);
+  customsPerUnit = Number(customsPerUnit);
+  unitPrice = Number(unitPrice);
 
   const transaction = await sequelize.transaction();
 
@@ -684,7 +732,7 @@ const addSerializedPart = async (req, res) => {
     where: { serialNumber: serialNumber },
   });
 
-  if (findSerialNumber) { 
+  if (findSerialNumber) {
     await transaction.rollback();
     return res.status(400).json({ error: "Serial Number already exist" });
   }
@@ -718,7 +766,7 @@ const addSerializedPart = async (req, res) => {
     return res.status(400).json({ error: "In Date cannot be null" });
   }
 
-  if (outDate !== null) {
+  if (outDate) {
     await transaction.rollback();
     return res.status(400).json({ error: "Item in cannot have outDate" });
   }
@@ -730,6 +778,15 @@ const addSerializedPart = async (req, res) => {
     });
   }
 
+  let imagePath = null;
+  if (req.file) {
+    // Save only the filename
+    imagePath = req.file.filename;
+
+    // Log the imagePath for debugging
+    console.log("Image Path:", imagePath);
+  }
+
   const body = {
     inventoryId,
     serialNumber,
@@ -738,12 +795,18 @@ const addSerializedPart = async (req, res) => {
     status,
     manufactureroem,
     unitPrice,
+    shippingPricePerUnit,
+    customsPerUnit,
     inDate,
     outDate,
     userEmail,
     supplier,
     customer,
     warrantyEndDate,
+    conversionRate,
+    currency,
+    source: "MANUAL ENTRY",
+    imagePath: imagePath,
   };
 
   try {
@@ -751,7 +814,7 @@ const addSerializedPart = async (req, res) => {
       {
         quantity: findInventoryId.quantity + 1,
         totalStock: findInventoryId.totalStock + 1,
-     
+        inDate: inDate,
       },
       { where: { id: inventoryId }, transaction }
     );
@@ -781,11 +844,189 @@ const addSerializedPart = async (req, res) => {
   }
 };
 
-//ship out serialized item-[outDate, customer]
+const updateSerializedPart = async (req, res) => {
+  const { id, serialId } = req.params;
+  const inventoryId = id;
+  const {
+    serialNumber,
+    quantity,
+    condition,
+    status,
+    unitPrice,
+    shippingPricePerUnit,
+    customsPerUnit,
+    manufactureroem,
+    inDate,
+    outDate,
+    userEmail,
+    supplier,
+    customer,
+    warrantyEndDate,
+    currency,
+    conversionRate,
+    paymentDate,
+    sellingPrice, // Assuming you have this in the req.body
+  } = req.body;
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    // Find the existing serialized item
+    const serializedItem = await SerializedItem.findByPk(serialId, {
+      transaction,
+    });
+    if (!serializedItem) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Serialized item not found" });
+    }
+
+    // Validate inventory
+    const inventoryItem = await Inventory.findByPk(inventoryId, {
+      transaction,
+    });
+    if (!inventoryItem) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Cannot find this inventoryID" });
+    }
+
+    // Check serial number uniqueness if it's being changed
+    if (serialNumber && serialNumber !== serializedItem.serialNumber) {
+      const existingSerialNumber = await SerializedItem.findOne({
+        where: { serialNumber: serialNumber },
+        transaction,
+      });
+
+      if (existingSerialNumber) {
+        await transaction.rollback();
+        return res.status(400).json({ error: "Serial Number already exists" });
+      }
+    }
+
+    // Validation for item type and quantity
+    if (inventoryItem.type === "non-serialized") {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Cannot update a non-serialized item in this list" });
+    }
+
+    if (quantity <= 0 || quantity !== 1) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
+
+    if (inDate === null) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "In Date cannot be null" });
+    }
+
+    if (outDate !== null && new Date(outDate) <= new Date(inDate)) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Out Date cannot be before or same as In Date" });
+    }
+
+    if (new Date(warrantyEndDate) < new Date(inDate)) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Warranty End Date cannot be before the In Date of the unit",
+      });
+    }
+
+    if (outDate) {
+      if (!customer || !sellingPrice || !paymentDate) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error:
+            "Customer, Selling Price, and Payment Date are required when Out Date is provided",
+        });
+      }
+    }
+
+    let profit = serializedItem.profit;
+
+    const priceFieldsChanged =
+      shippingPricePerUnit !== serializedItem.shippingPricePerUnit ||
+      customsPerUnit !== serializedItem.customsPerUnit ||
+      unitPrice !== serializedItem.unitPrice ||
+      sellingPrice !== serializedItem.sellingPrice;
+
+    if (priceFieldsChanged) {
+      profit = sellingPrice - shippingPricePerUnit - customsPerUnit - unitPrice;
+    }
+
+    await serializedItem.update(
+      {
+        serialNumber,
+        quantity,
+        condition,
+        status,
+        unitPrice,
+        shippingPricePerUnit,
+        customsPerUnit,
+        manufactureroem,
+        inDate,
+        outDate,
+        userEmail,
+        supplier,
+        customer,
+        warrantyEndDate,
+        conversionRate,
+        currency,
+        paymentDate,
+        sellingPrice,
+        profit, // Update the profit
+      },
+      { transaction }
+    );
+
+    await Inventory.update(
+      {
+        inDate: inDate,
+      },
+      { where: { id: inventoryId }, transaction }
+    );
+
+    await transaction.commit();
+
+    const partDetails = {
+      partNumber: inventoryItem.partNumber,
+      partDescription: inventoryItem.partDescription,
+    };
+
+    const emailSubject = `Beta-GMT Inventory Item Updated [Serial Number: ${serialNumber}] [Part Number: ${
+      partDetails.partNumber !== null ? partDetails.partNumber : "unspecified"
+    }] [Part Description: ${
+      partDetails.partDescription !== null
+        ? partDetails.partDescription
+        : "unspecified"
+    }]`;
+    const emailText = `A serialized item has been updated in the inventory:\n\nPart Description: ${partDetails.partDescription}\nPart Number: ${partDetails.partNumber}\nSerial Number: ${serialNumber}\nType: ${inventoryItem.type}\nQuantity : ${quantity}\nIn Date : ${inDate}\nUpdated by: ${userEmail}`;
+    await createNotification("dhia@grandmtech.com", emailSubject, emailText);
+
+    return res.status(200).json({
+      message: "Successfully updated",
+      serializedItem,
+    });
+  } catch (error) {
+    if (transaction) await transaction.rollback();
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+//ship out serialized item-[outDate, customer,userEmail,sellingPrice,paymentDate]
 const updateSerializedItemOut = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { serialNumbers, outDate, customer, userEmail } = req.body;
+    const {
+      serialNumbers,
+      outDate,
+      customer,
+      userEmail,
+      sellingPrice,
+      paymentDate,
+    } = req.body;
 
     if (!Array.isArray(serialNumbers) || serialNumbers.length === 0) {
       return res
@@ -795,14 +1036,20 @@ const updateSerializedItemOut = async (req, res) => {
     if (!outDate) {
       return res.status(400).json({ error: "Out Date is required" });
     }
+    if (!paymentDate) {
+      return res
+        .status(400)
+        .json({ error: "An estimated payment date is required" });
+    }
     if (!customer) {
       return res.status(400).json({ error: "Customer is required" });
     }
+    if (sellingPrice < 0 || sellingPrice == "" || !sellingPrice) {
+      return res.status(400).json({ error: "Selling price is invalid" });
+    }
 
     const serializedItems = await SerializedItem.findAll({
-      where: {
-        serialNumber: serialNumbers,
-      },
+      where: { serialNumber: serialNumbers },
       transaction,
     });
 
@@ -835,29 +1082,31 @@ const updateSerializedItemOut = async (req, res) => {
 
     const inventoryId = Array.from(inventoryIds)[0];
 
-    const [updateCount, updatedItems] = await SerializedItem.update(
-      { outDate, customer },
-      {
-        where: {
-          serialNumber: serialNumbers,
+    const updatedItems = [];
+    for (const item of serializedItems) {
+      const profit =
+        sellingPrice -
+        item.unitPrice -
+        item.shippingPricePerUnit -
+        item.customsPerUnit;
+      const updatedItem = await item.update(
+        {
+          outDate,
+          customer,
+          sellingPrice,
+          profit,
+          paymentDate,
         },
-        returning: true,
-        transaction,
-      }
-    );
-
-    if (updateCount === 0) {
-      await transaction.rollback();
-      return res
-        .status(404)
-        .json({ error: "No matching serialized items found" });
+        { transaction }
+      );
+      updatedItems.push(updatedItem);
     }
 
     const inventoryItem = await Inventory.findByPk(inventoryId, {
       transaction,
     });
     await Inventory.update(
-      { quantity: inventoryItem.quantity - updatedItems , outDate:outDate},
+      { quantity: inventoryItem.quantity - updatedItems.length, outDate },
       { where: { id: inventoryId }, transaction }
     );
 
@@ -871,7 +1120,7 @@ const updateSerializedItemOut = async (req, res) => {
 
     return res.status(200).json({
       message: "Serialized items updated successfully",
-      updatedItems: updatedItems,
+      updatedItems,
     });
   } catch (error) {
     if (transaction) await transaction.rollback();
@@ -937,20 +1186,24 @@ const revertSerializedItemOut = async (req, res) => {
 
 const validateItems = (req, res) => {
   const { error } = validateSchema.validate(req.body);
-  
+
   if (error) {
-    return res.status(400).json({ error: error.details.map(detail => detail.message).join(', ') });
+    return res.status(400).json({
+      error: error.details.map((detail) => detail.message).join(", "),
+    });
   }
 
-  res.status(200).json({ message: 'Validation successful' });
+  res.status(200).json({ message: "Validation successful" });
 };
 
-
 const bulkAddItems = async (req, res) => {
-  const { items } = req.body;
+  const { items, shippingPrice, customPrice } = req.body;
   const transaction = await sequelize.transaction();
 
   try {
+    const shippingSalePerItem = shippingPrice / items.length;
+    const customsSalePerItem = customPrice / items.length;
+
     for (const item of items) {
       const {
         inventoryId,
@@ -969,6 +1222,8 @@ const bulkAddItems = async (req, res) => {
         warrantyEndDate,
         unitPrice,
         totalPrice,
+        currency,
+        conversionRate,
       } = item;
 
       const findInventoryId = await Inventory.findByPk(inventoryId);
@@ -994,7 +1249,10 @@ const bulkAddItems = async (req, res) => {
         }
 
         await Inventory.update(
-          { quantity: findInventoryId.quantity + quantityChange },
+          {
+            quantity: findInventoryId.quantity + quantityChange,
+            inDate: inDate,
+          },
           { where: { id: inventoryId }, transaction }
         );
 
@@ -1010,7 +1268,12 @@ const bulkAddItems = async (req, res) => {
             status,
             userEmail,
             unitPrice,
-            totalPrice
+            totalPrice,
+            currency,
+            conversionRate,
+            shippingPriceBatch: shippingSalePerItem,
+            customsPerBatch: customsSalePerItem,
+            source: "PO GENERATION",
           },
           { transaction }
         );
@@ -1041,6 +1304,7 @@ const bulkAddItems = async (req, res) => {
           {
             quantity: findInventoryId.quantity + 1,
             totalStock: findInventoryId.totalStock + 1,
+            inDate: inDate,
           },
           { where: { id: inventoryId }, transaction }
         );
@@ -1059,6 +1323,12 @@ const bulkAddItems = async (req, res) => {
             supplier,
             customer,
             warrantyEndDate,
+            currency,
+            unitPrice,
+            conversionRate,
+            shippingPricePerUnit: shippingSalePerItem,
+            customsPerUnit: customsSalePerItem,
+            source: "PO GENERATION",
           },
           { transaction }
         );
@@ -1072,9 +1342,13 @@ const bulkAddItems = async (req, res) => {
           ? partDetails.partDescription
           : "unspecified"
       }]`;
-      const emailText = `A new item has been added to the inventory:\n\nPart Description: ${partDetails.partDescription}\nPart Number: ${partDetails.partNumber}\n${
+      const emailText = `A new item has been added to the inventory:\n\nPart Description: ${
+        partDetails.partDescription
+      }\nPart Number: ${partDetails.partNumber}\n${
         type === "serialized" ? `Serial Number: ${serialNumber}\n` : ""
-      }Type: ${type}\nQuantity: ${type === "serialized" ? 1 : quantityChange}\nIn Date: ${
+      }Type: ${type}\nQuantity: ${
+        type === "serialized" ? 1 : quantityChange
+      }\nIn Date: ${
         type === "serialized" ? inDate : date
       }\nCreated by: ${userEmail}`;
       await createNotification("dhia@grandmtech.com", emailSubject, emailText);
@@ -1087,24 +1361,348 @@ const bulkAddItems = async (req, res) => {
     });
   } catch (error) {
     if (transaction && !transaction.finished) await transaction.rollback();
-    return res.status(500).json({ error: "Internal server error", message: error.message });
+    return res
+      .status(500)
+      .json({ error: "Internal server error", message: error.message });
   }
 };
 
+const editUnserializedItem = async (req, res) => {
+  const { id, unserialId } = req.params;
 
+  const {
+    totalPurchased,
+    date,
+    supplier,
+    manufactureroem,
+    condition,
+    status,
+    userEmail,
+    currency,
+    conversionRate,
+    unitPrice,
+    shippingPriceBatch,
+    customsPerBatch,
+    totalPrice,
+    warrantyEndDate,
+  } = req.body;
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const findInventoryId = await Inventory.findByPk(id);
+    if (!findInventoryId) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Cannot find this inventoryID" });
+    }
+
+    const findUnserializedItem = await UnserializedIn.findByPk(unserialId);
+    if (!findUnserializedItem) {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Cannot find this Unserialized Item" });
+    }
+
+    const partDetails = {
+      partNumber: findInventoryId.partNumber,
+      partDescription: findInventoryId.partDescription,
+    };
+
+    if (
+      totalPurchased < 0 ||
+      !supplier ||
+      !manufactureroem ||
+      !condition ||
+      !status ||
+      !date
+    ) {
+      await transaction.rollback();
+      return res.status(400).json({ error: "Invalid input parameters" });
+    }
+
+    const { type } = findInventoryId;
+
+    if (type === "serialized") {
+      await transaction.rollback();
+      return res
+        .status(400)
+        .json({ error: "Serialized Item cannot be edited in this inventory" });
+    }
+
+    // Check if totalPurchased is less than the remaining quantityChange
+    if (totalPurchased < findUnserializedItem.quantityChange) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error:
+          "Total purchased cannot be less than the remaining quantity in stock",
+      });
+    }
+
+    const purchasedDifference =
+      totalPurchased - findUnserializedItem.totalPurchased;
+
+    // Only update the inventory quantity if totalPurchased has changed
+    if (purchasedDifference !== 0) {
+      const updatedQuantity = findInventoryId.quantity + purchasedDifference;
+
+      await Inventory.update(
+        { quantity: updatedQuantity, inDate: date },
+        { where: { id: id }, transaction }
+      );
+    }
+
+    let updatedStock;
+
+    if (totalPurchased > findUnserializedItem.totalPurchased) {
+      updatedStock =
+        findUnserializedItem.quantityChange +
+        (totalPurchased - findUnserializedItem.totalPurchased);
+    } else if (totalPurchased < findUnserializedItem.totalPurchased) {
+      updatedStock =
+        findUnserializedItem.quantityChange -
+        (findUnserializedItem.totalPurchased - totalPurchased);
+    } else {
+      updatedStock = findUnserializedItem.quantityChange;
+    }
+
+    await UnserializedIn.update(
+      {
+        quantityChange: updatedStock,
+        totalPurchased: totalPurchased,
+        date: date,
+        supplier: supplier,
+        manufactureroem: manufactureroem,
+        condition: condition,
+        status: status,
+        userEmail: userEmail,
+        totalPrice: totalPrice,
+        unitPrice: unitPrice,
+        shippingPriceBatch: shippingPriceBatch,
+        customsPerBatch: customsPerBatch,
+        currency: currency,
+        conversionRate: conversionRate,
+        warrantyEndDate: warrantyEndDate,
+      },
+      { where: { id: unserialId }, transaction }
+    );
+
+    const unserializedOutItems = await UnserializedOut.findAll({
+      where: { unserializedInId: unserialId },
+      transaction,
+    });
+
+    for (const outItem of unserializedOutItems) {
+      const profitPerUnit = outItem.shipOutPrice / outItem.quantity - unitPrice;
+      const totalProfit = profitPerUnit * outItem.quantity;
+
+      await UnserializedOut.update(
+        { profitPerUnit: profitPerUnit, totalProfit: totalProfit },
+        { where: { id: outItem.id }, transaction }
+      );
+    }
+
+    await transaction.commit();
+
+    /* // Mail notification
+    const emailSubject = `Beta-GMT Inventory [Unserialized] Item Edited [Part Number: ${
+      partDetails.partNumber !== null ? partDetails.partNumber : "unspecified"
+    }] [Part Description: ${
+      partDetails.partDescription !== null
+        ? partDetails.partDescription
+        : "unspecified"
+    }]`;
+    const emailText = `An item has been edited in the inventory:\n\nPart Description: ${partDetails.partDescription}\nPart Number: ${partDetails.partNumber}\n\nType: ${type}\nQuantity: ${updatedQuantity}\nIn Date: ${date}\nEdited by: ${userEmail}`;
+    await createNotification("dhia@grandmtech.com", emailSubject, emailText); */
+    return res.status(200).json({
+      message: "Successfully updated",
+      partData: partDetails,
+    });
+  } catch (error) {
+    if (transaction && !transaction.finished) await transaction.rollback();
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const updateUnserializedOutEntry = async (req, res) => {
+  const { unserializedOutId } = req.params;
+  const { customer, outDate, paymentDate } = req.body;
+  const id = unserializedOutId;
+  try {
+    // Find the entry by its ID
+    const unserializedOutEntry = await UnserializedOut.findByPk(id);
+
+    if (!unserializedOutEntry) {
+      return res.status(404).json({ error: "Entry not found" });
+    }
+
+    // Update the fields only if they are provided in the request body
+    unserializedOutEntry.customer = customer || unserializedOutEntry.customer;
+    unserializedOutEntry.outDate = outDate || unserializedOutEntry.outDate;
+    unserializedOutEntry.paymentDate =
+      paymentDate || unserializedOutEntry.paymentDate;
+
+    // Save the updated entry
+    await unserializedOutEntry.save();
+
+    res.status(200).json({
+      message: "Entry updated successfully",
+      unserializedOutEntry,
+    });
+  } catch (error) {
+    console.error("Error updating unserialized out entry:", error);
+    res
+      .status(500)
+      .json({ error: "An error occurred while updating the entry" });
+  }
+};
+
+const updateUnserializedItemImage = async (req, res) => {
+  const { id } = req.params;
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    // Find the unserialized item by ID
+    const unserializedIn = await UnserializedIn.findByPk(id);
+
+    if (!unserializedIn) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Unserialized item not found" });
+    }
+
+    const oldImagePath = unserializedIn.imagePath;
+
+    // Delete the old image if it exists
+    if (oldImagePath) {
+      const fullPath = path.join(
+        __dirname,
+        "..",
+        "public",
+        "inventory",
+        oldImagePath
+      );
+
+      fs.unlink(fullPath, (err) => {
+        if (err) {
+          console.error("Failed to delete old image:", err);
+        } else {
+          console.log("Old image deleted successfully:", fullPath);
+        }
+      });
+    }
+
+    // Handle the new image upload
+    let newImagePath = null;
+    if (req.file) {
+      // Save the filename as the new imagePath
+      newImagePath = req.file.filename;
+
+      // Update the unserialized item with the new image path
+      await UnserializedIn.update(
+        { imagePath: newImagePath },
+        { where: { id }, transaction }
+      );
+    }
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      message: "Image updated successfully",
+      imagePath: newImagePath,
+    });
+  } catch (error) {
+    if (transaction && !transaction.finished) await transaction.rollback();
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+const updateSerializedItemImage = async (req, res) => {
+  const { id } = req.params;
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    // Find the unserialized item by ID
+    const serializedID = await SerializedItem.findByPk(id);
+
+    if (!serializedID) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Serialized item not found" });
+    }
+
+    const oldImagePath = serializedID.imagePath;
+
+    // Delete the old image if it exists
+    if (oldImagePath) {
+      const fullPath = path.join(
+        __dirname,
+        "..",
+        "public",
+        "inventory",
+        oldImagePath
+      );
+
+      fs.unlink(fullPath, (err) => {
+        if (err) {
+          console.error("Failed to delete old image:", err);
+        } else {
+          console.log("Old image deleted successfully:", fullPath);
+        }
+      });
+    }
+
+    // Handle the new image upload
+    let newImagePath = null;
+    if (req.file) {
+      // Save the filename as the new imagePath
+      newImagePath = req.file.filename;
+
+      // Update the unserialized item with the new image path
+      await SerializedItem.update(
+        { imagePath: newImagePath },
+        { where: { id }, transaction }
+      );
+    }
+
+    await transaction.commit();
+
+    return res.status(200).json({
+      message: "Image updated successfully",
+      imagePath: newImagePath,
+    });
+  } catch (error) {
+    if (transaction && !transaction.finished) await transaction.rollback();
+    return res.status(500).json({ error: "Internal server error" });
+  }
+};
 
 module.exports = {
+  //get
   getInventoryPaginated,
+  searchInventory,
+
+  //post
   addToInventory,
   addSerializedPart,
-  searchInventory,
-  updateSerializedItemOut,
-  revertSerializedItemOut,
-  addUnserializedItem,
   shipOutItems,
-  revertShipment,
-  validatePNPD,
   bulkAddItems,
+  addConstraint,
+  addUnserializedItem,
+
+  //put
+  updateSerializedPart,
+  editUnserializedItem,
+  updateSerializedItemOut,
+  updateUnserializedOutEntry,
+  updateUnserializedItemImage,
+  updateSerializedItemImage,
+
+  //delete
+  revertSerializedItemOut,
+  revertShipment,
+
+  //validate
+  validatePNPD,
   validateItems,
-  addConstraint
 };

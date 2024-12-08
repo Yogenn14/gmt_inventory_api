@@ -48,6 +48,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      consumables: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+      },
       userEmail: {
         type: DataTypes.STRING,
         allowNull: false,

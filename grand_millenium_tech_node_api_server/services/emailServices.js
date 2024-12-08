@@ -10,10 +10,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const createNotification = (to, subject, text) => {
+const createNotification = (to, subject, text, cc = []) => {
   const mailOptions = {
     from: '"Inventory System"',
     to: to,
+    cc : cc,
     subject: subject,
     text: text,
   };

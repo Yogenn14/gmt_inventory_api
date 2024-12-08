@@ -6,6 +6,7 @@ const { verify } = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
+const createNotification = require("../services/emailServices");
 
 //create model
 const User = db.users;
@@ -13,10 +14,24 @@ const User = db.users;
 //addUser
 const addUser = async (req, res) => {
   try {
-    const { name, image, email, password, role } = req.body;
+    const {
+      name,
+      image,
+      email,
+      password,
+      role,
+      assignedBy,
+      linkedIn,
+      twitter,
+      facebook,
+    } = req.body;
 
-    if (!name || !email || !password || !role) {
-      return res.status(400).send({ message: "All fields are required" });
+    if (!name || !email || !password || !role || !assignedBy) {
+      return res
+        .status(400)
+        .send({
+          message: "Name, email, password, role, assignedBy are required",
+        });
     }
 
     const existingUser = await User.findOne({ where: { email: email } });
@@ -27,15 +42,59 @@ const addUser = async (req, res) => {
         .send({ message: "User already exists with this email" });
     }
 
+    const existingUserMail = await User.findOne({
+      where: { email: assignedBy },
+    });
+
+    if (!existingUserMail) {
+      return res
+        .status(400)
+        .send({ message: "Assigned By user does not exist" });
+    }
+
+    if (existingUserMail.role !== "ADMIN") {
+      return res
+        .status(403)
+        .send({ message: "Only ADMIN can perform this operation" });
+    }
+
     const user = await User.create({
       name: name,
       image: image,
       email: email,
       hashedPassword: password,
       role: role,
+      assignedBy: assignedBy,
+      linkedIn: linkedIn,
+      facebook: facebook,
+      twitter: twitter,
     });
 
+    const emailSubject = `A new user ${email} has been added to GMT Inventory System as ${role}`;
+
+    const emailText = `The following person with the following email address:\n
+    Email: ${email}\n
+    Role: ${role}\n
+    Temporary Password: ${password}\n
+
+    Has been added and given access to the GMT Inventory Management system, assigned by ${assignedBy}. \n Please forward this email to the new user.`;
+
+    const receiverEmail = `Access to GMT Inventory: ${email}`;
+
+    const receiverText = `You have been given access to the GMT Inventory System. Here are your credentials with a temporary password:\n
+    Email: ${email}\n
+    Role: ${role}\n
+    Temporary Password: ${password}\n
+    Please change your password upon login for better security.`;
+
     res.status(200).send({ message: "Successfully added user", user });
+    await createNotification(
+      "dhia@grandmtech.com",
+      emailSubject,
+      emailText,
+      []
+    );
+    await createNotification(`${email}`, receiverEmail, receiverText);
   } catch (error) {
     console.error(error);
     res.status(500).send({ message: "Internal Server Error" });
@@ -113,10 +172,7 @@ const refreshToken = async (req, res) => {
 
     try {
       // Verify the refresh token
-      const decoded = verify(
-        refreshToken,
-        "5e56eb7c135eb724d9f588ae1b46317f56a5d3e16284471a28002c81e73c2c15"
-      );
+      const decoded = verify(refreshToken, `${process.env.JWT_REFRESH_KEY}`);
 
       // Retrieve user details based on the refresh token
       const user = await User.findOne({
@@ -130,7 +186,7 @@ const refreshToken = async (req, res) => {
       // Generate a new access token
       const accessToken = sign(
         { id: user.id, email: user.email, role: user.role, image: user.image },
-        "fh3H5y8Sm91brlh2chNXZqeihWBP7KdX",
+        `${process.env.JWT_SECRET_KEY}`,
         { expiresIn: "1h" }
       );
 
@@ -194,7 +250,7 @@ const getUserByToken = async (req, res) => {
 const editUser = async (req, res) => {
   try {
     const userEmail = req.params.email;
-    const { name, email } = req.body;
+    const { name, email, linkedIn, twitter, facebook, assignedBy } = req.body;
     const user = await User.findOne({ where: { email: userEmail } });
 
     if (!user) {
@@ -203,6 +259,10 @@ const editUser = async (req, res) => {
 
     user.name = name;
     user.email = email;
+    (user.twitter = twitter),
+      (user.facebook = facebook),
+      (user.linkedIn = linkedIn);
+    user.assignedBy = assignedBy;
 
     await user.save();
 
@@ -247,6 +307,18 @@ const uploadProfilePhoto = async (req, res) => {
   }
 };
 
+const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: { exclude: ["hashedPassword", "refreshToken"] },
+    });
+    res.status(200).send({ users });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+};
+
 module.exports = {
   addUser,
   login,
@@ -254,4 +326,5 @@ module.exports = {
   editUser,
   refreshToken,
   uploadProfilePhoto,
+  getAllUsers,
 };
